@@ -1,0 +1,15 @@
+#!/usr/bin/env ruby
+$LOAD_PATH.unshift(File.join(__dir__, "..", "lib"))
+require "dam"
+require "thor"
+
+module Dam
+  class CLI < Thor
+    desc "version", "Show version, just for testing hihi"
+    def version
+      puts "dam 0.1.0"
+    end
+  end
+end
+
+Dam::CLI.start(ARGV)
