@@ -1,4 +1,3 @@
-# lib/dam/git_poller.rb (versión Windows)
 require "fiddle"
 require "fiddle/import"
 
@@ -11,15 +10,16 @@ module Dam
   end
 
   class GitPoller
+    EDITORS = ["Code", "idea64", "rubymine64", "sublime_text", "atom"].freeze
+
     def self.active_project
       hwnd = Win32.GetForegroundWindow()
       return nil if hwnd == 0
 
-      pid_buf = Fiddle::Pointer.malloc(Fiddle::SIZEOF_INT)
-      Win32.GetWindowThreadProcessId(hwnd, pid_buf)
-      pid = pid_buf[0, Fiddle::SIZEOF_INT].unpack1("L")
+      pid = foreground_pid(hwnd)
+      return nil unless pid && pid > 0
 
-      cwd = process_cwd_windows(pid)
+      cwd = process_cwd(pid)
       return nil unless cwd
 
       git_root(cwd)
@@ -38,17 +38,41 @@ module Dam
 
     private
 
-    def self.process_cwd_windows(pid)
-      # Usa wmic para obtener el directorio de trabajo del proceso
-      result = `wmic process where ProcessId=#{pid} get ExecutablePath 2>NUL`.strip
-      path = result.lines.last&.strip
-      return nil if path.nil? || path.empty? || path == "ExecutablePath"
-      File.dirname(path)
+    def self.foreground_pid(hwnd)
+      pid_buf = Fiddle::Pointer.malloc(Fiddle::SIZEOF_LONG)
+      Win32.GetWindowThreadProcessId(hwnd, pid_buf)
+      pid_buf[0, Fiddle::SIZEOF_LONG].unpack1("L")
+    end
+
+    def self.process_cwd(pid)
+      EDITORS.each do |editor|
+        title = `powershell -NoProfile -Command "Get-Process '#{editor}' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty MainWindowTitle"`.strip
+        next if title.empty?
+
+        if editor == "Code"
+          parts = title.split(" - ").map(&:strip)
+          folder = parts[-2]
+          next if folder.nil? || folder.empty?
+
+          ["C:\\Users\\#{ENV['USERNAME']}\\Desktop\\Proyectos",
+          "C:\\Users\\#{ENV['USERNAME']}",
+          "C:\\"].each do |base|
+            candidate = File.join(base, folder)
+            return candidate if File.directory?(candidate)
+          end
+        end
+      end
+
+      raw = `powershell -NoProfile -Command "(Get-Process -Id #{pid} -ErrorAction SilentlyContinue).MainModule.FileName"`.strip
+      return nil if raw.empty?
+      File.dirname(raw)
     end
 
     def self.git_root(path)
+      return nil unless path && File.directory?(path)
       root = `git -C "#{path}" rev-parse --show-toplevel 2>NUL`.strip
-      root.empty? ? nil : root.gsub("/", "\\")
+      return nil if root.empty?
+      root.gsub("/", "\\")
     end
   end
 end
