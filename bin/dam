@@ -5,27 +5,46 @@ require "thor"
 
 module Dam
   class CLI < Thor
-    desc "start", "Start daemon on the background"
+    desc "start", "Start the daemon in the background"
     def start
       Log.setup(verbose: false)
       Log.info("Starting daemon...")
-      daemon = Daemon.new
-      daemon.start
+      Daemon.new.start
     end
 
-    desc "stop", "Stop daemon"
+    desc "stop", "Stop the daemon"
     def stop
       pidfile = File.expand_path("~/.dam/daemon.pid")
       unless File.exist?(pidfile)
-        puts "Daemon not detected."
+        puts "Daemon is not running."
         return
       end
       pid = File.read(pidfile).to_i
       Process.kill("INT", pid)
-      puts "Daemon stoped (PID: #{pid})"
+      puts "Daemon stopped (PID: #{pid})"
     rescue Errno::ESRCH
-      puts "Process not running, cleaning pidfile."
+      puts "Process no longer exists, cleaning up pidfile."
       File.delete(pidfile)
+    end
+
+    desc "today", "Show today's activity summary"
+    def today
+      since = Time.now.then { |t| Time.new(t.year, t.month, t.day) }
+      Reporter.new(since: since).print_summary(title: "Today — #{Time.now.strftime('%m/%d/%Y')}")
+    end
+
+    desc "report", "Show activity report for a time period"
+    option :week,  type: :boolean, desc: "Last 7 days"
+    option :month, type: :boolean, desc: "Last 30 days"
+    def report
+      since = if options[:month]
+                Time.now - 30 * 86400
+              else
+                Time.now - 7 * 86400
+              end
+
+      label = options[:month] ? "Last 30 days" : "Last 7 days"
+      Reporter.new(since: since).print_summary(title: label)
     end
 
     desc "version", "Show version"
