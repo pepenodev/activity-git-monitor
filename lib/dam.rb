@@ -1,3 +1,4 @@
+require_relative "dam/logger"
 require_relative "dam/database"
 require_relative "dam/git_poller"
 require_relative "dam/daemon"
