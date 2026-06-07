@@ -5,7 +5,30 @@ require "thor"
 
 module Dam
   class CLI < Thor
-    desc "version", "Show version, just for testing hihi"
+    desc "start", "Start daemon on the background"
+    def start
+      Log.setup(verbose: false)
+      Log.info("Starting daemon...")
+      daemon = Daemon.new
+      daemon.start
+    end
+
+    desc "stop", "Stop daemon"
+    def stop
+      pidfile = File.expand_path("~/.dam/daemon.pid")
+      unless File.exist?(pidfile)
+        puts "Daemon not detected."
+        return
+      end
+      pid = File.read(pidfile).to_i
+      Process.kill("INT", pid)
+      puts "Daemon stoped (PID: #{pid})"
+    rescue Errno::ESRCH
+      puts "Process not running, cleaning pidfile."
+      File.delete(pidfile)
+    end
+
+    desc "version", "Show version"
     def version
       puts "dam 0.1.0"
     end
