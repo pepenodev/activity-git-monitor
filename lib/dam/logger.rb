@@ -14,14 +14,12 @@ module Dam
       @console_logger = Logger.new($stdout)
       @console_logger.level = verbose ? Logger::DEBUG : Logger::INFO
 
-      # Formato limpio para consola
       @console_logger.formatter = proc do |severity, time, _, msg|
         color = color_for(severity)
         reset = "\e[0m"
         "#{color}[#{time.strftime('%H:%M:%S')}] #{severity.ljust(5)} #{msg}#{reset}\n"
       end
 
-      # Formato completo para archivo
       @file_logger.formatter = proc do |severity, time, _, msg|
         "[#{time.strftime('%Y-%m-%d %H:%M:%S')}] #{severity.ljust(5)} #{msg}\n"
       end
@@ -35,7 +33,7 @@ module Dam
     private
 
     def self.log(level, msg)
-      setup unless @console_logger  # auto-setup si no se llamó setup antes
+      setup unless @console_logger  
       @console_logger.add(level, msg)
       @file_logger.add(level, msg)
     end
