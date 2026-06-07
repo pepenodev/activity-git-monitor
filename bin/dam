@@ -34,3 +34,5 @@ module Dam
     end
   end
 end
+
+Dam::CLI.start(ARGV)
