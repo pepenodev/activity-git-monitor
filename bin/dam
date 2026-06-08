@@ -7,24 +7,109 @@ module Dam
   class CLI < Thor
     desc "start", "Start the daemon in the background"
     def start
-      Log.setup(verbose: false)
-      Log.info("Starting daemon...")
-      Daemon.new.start
+      pidfile = File.expand_path("~/.dam/daemon.pid")
+
+      if File.exist?(pidfile)
+        pid = File.read(pidfile).to_i
+        begin
+          Process.kill(0, pid)
+          puts "Daemon is already running (PID: #{pid})"
+          return
+        rescue Errno::ESRCH
+          File.delete(pidfile)
+        end
+      end
+
+      project_root = File.expand_path("..", __dir__)
+      script       = File.join(project_root, "lib", "dam", "daemon_runner.rb")
+      log_path     = File.expand_path("~/.dam/daemon.log")
+      ruby_bin     = RbConfig.ruby
+
+      if Gem.win_platform?
+        log_out = File.expand_path("~/.dam/daemon.log")
+        log_err = File.expand_path("~/.dam/daemon_err.log")
+        ps_cmd = "Start-Process -FilePath '#{ruby_bin}' " \
+                "-ArgumentList '#{script}' " \
+                "-WorkingDirectory '#{project_root}' " \
+                "-RedirectStandardOutput '#{log_out}' " \
+                "-RedirectStandardError '#{log_err}' " \
+                "-WindowStyle Hidden"
+        system("powershell -NoProfile -Command \"#{ps_cmd}\"")
+      end
+
+      sleep 3
+      if File.exist?(pidfile)
+        pid = File.read(pidfile).to_i
+        puts "Daemon started (PID: #{pid})"
+        puts "Logs: #{log_path}"
+      else
+        puts "Daemon failed to start, check logs: #{log_path}"
+      end
     end
 
     desc "stop", "Stop the daemon"
     def stop
+      pidfile  = File.expand_path("~/.dam/daemon.pid")
+      stopfile = File.expand_path("~/.dam/stop")
+
+      unless File.exist?(pidfile)
+        puts "Daemon is not running."
+        return
+      end
+
+      pid = File.read(pidfile).to_i
+      File.write(stopfile, "stop")
+      puts "Stop signal sent, waiting for daemon to finish..."
+
+      15.times do
+        sleep 1
+        unless File.exist?(pidfile)
+          puts "Daemon stopped cleanly (PID: #{pid})"
+          return
+        end
+      end
+
+      puts "Forcing stop..."
+      system("taskkill /PID #{pid} /F /T") if Gem.win_platform?
+      File.delete(pidfile) if File.exist?(pidfile)
+      puts "Daemon stopped (PID: #{pid})"
+    end
+
+    desc "status", "Show daemon status"
+    def status
       pidfile = File.expand_path("~/.dam/daemon.pid")
       unless File.exist?(pidfile)
         puts "Daemon is not running."
         return
       end
       pid = File.read(pidfile).to_i
-      Process.kill("INT", pid)
-      puts "Daemon stopped (PID: #{pid})"
-    rescue Errno::ESRCH
-      puts "Process no longer exists, cleaning up pidfile."
-      File.delete(pidfile)
+      begin
+        Process.kill(0, pid)
+        puts "Daemon is running (PID: #{pid})"
+        puts "Logs: #{File.expand_path('~/.dam/daemon.log')}"
+      rescue Errno::ESRCH
+        puts "Daemon crashed. Check logs: #{File.expand_path('~/.dam/daemon.log')}"
+        File.delete(pidfile)
+      end
+    end
+
+    desc "logs", "Show daemon logs"
+    def logs
+      log_out = File.expand_path("~/.dam/daemon.log")
+      log_err = File.expand_path("~/.dam/daemon_err.log")
+
+      if File.exist?(log_err) && !File.read(log_err).empty?
+        puts "--- ERRORS ---"
+        puts File.readlines(log_err).last(10)
+        puts "---"
+      end
+
+      unless File.exist?(log_out)
+        puts "No logs found."
+        return
+      end
+
+      puts File.readlines(log_out).last(30)
     end
 
     desc "today", "Show today's activity summary"

@@ -4,6 +4,7 @@ module Dam
   class Daemon
     POLL_INTERVAL = 10
     IDLE_TIMEOUT  = 120
+    STOP_FILE     = File.expand_path("~/.dam/stop")
 
     def initialize
       @current_session = nil
@@ -12,19 +13,28 @@ module Dam
     end
 
     def start
-      Log.info("[INFO] Daemon (PID: #{Process.pid})")
+      Log.info("Daemon started (PID: #{Process.pid})")
+      File.delete(STOP_FILE) if File.exist?(STOP_FILE)
+      @db.close_open_sessions!
       write_pidfile
 
       loop do
+        if File.exist?(STOP_FILE)
+          Log.info("Stop file detected, shutting down...")
+          File.delete(STOP_FILE)
+          break
+        end
         tick
         sleep POLL_INTERVAL
       end
-    rescue Interrupt
-      Log.info("[INFO] Daemon interrupted...")
+
       finalize_session
+      Log.info("Daemon stopped.")
+    rescue Interrupt
+      finalize_session
+      Log.info("Daemon stopped.")
     ensure
       cleanup_pidfile
-      Log.info("[INFO] Daemon stoped.")
     end
 
     private
@@ -39,19 +49,17 @@ module Dam
 
         if @current_session.nil?
           @current_session = { project: project, branch: branch, started_at: now }
-          Log.info("[INFO] Current session: #{project} (#{branch})")
-
+          Log.info("Session started: #{project} (#{branch})")
         elsif session_changed?(project, branch)
           finalize_session
           @current_session = { project: project, branch: branch, started_at: now }
-          Log.info("[INFO] session changed: #{project} (#{branch})")
+          Log.info("Session changed: #{project} (#{branch})")
         end
 
         @last_activity = now
-
       else
         if @current_session && idle?
-          Log.info("Idle detected, session closed")
+          Log.info("Idle detected, closing session")
           finalize_session
         end
       end
@@ -71,8 +79,8 @@ module Dam
       ended_at   = Time.now
       duration_s = (ended_at - @current_session[:started_at]).to_i
 
-      if duration_s < 30
-        Log.debug("Session not too long (#{duration_s} s), ignored")
+      if duration_s < 5
+        Log.debug("Session too short (#{duration_s}s), skipping")
         @current_session = nil
         return
       end
