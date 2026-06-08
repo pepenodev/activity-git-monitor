@@ -17,6 +17,8 @@ module Dam
     end
 
     def migrate!
+      @db.execute("PRAGMA journal_mode=WAL;")
+
       @db.execute <<~SQL
         CREATE TABLE IF NOT EXISTS sessions (
           id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,6 +34,20 @@ module Dam
         CREATE INDEX IF NOT EXISTS idx_sessions_project
           ON sessions(project, started_at);
       SQL
+    end
+
+    def close_open_sessions!
+      now = Time.now.to_i
+      @db.execute(<<~SQL, [now])
+        UPDATE sessions
+        SET ended_at   = ?,
+            duration_s = ? - started_at
+        WHERE ended_at IS NULL
+          AND duration_s IS NULL
+      SQL
+
+      count = @db.changes
+      Log.info("Closed #{count} orphan session(s) from previous run") if count > 0
     end
 
     def insert_session(project:, branch:, started_at:, ended_at:, duration_s:)
@@ -58,6 +74,8 @@ module Dam
           SUM(duration_s) AS total_seconds
         FROM sessions
         WHERE started_at >= ?
+          AND duration_s IS NOT NULL
+          AND duration_s > 0
         GROUP BY project, branch
         ORDER BY total_seconds DESC
       SQL
