@@ -1,78 +1,25 @@
-require "fiddle"
-require "fiddle/import"
-
 module Dam
-  module Win32
-    extend Fiddle::Importer
-    dlload "user32"
-    extern "int GetForegroundWindow()"
-    extern "int GetWindowThreadProcessId(int, void*)"
-  end
-
   class GitPoller
-    EDITORS = ["Code", "idea64", "rubymine64", "sublime_text", "atom"].freeze
-
-    def self.active_project
-      hwnd = Win32.GetForegroundWindow()
-      return nil if hwnd == 0
-
-      pid = foreground_pid(hwnd)
-      return nil unless pid && pid > 0
-
-      cwd = process_cwd(pid)
-      return nil unless cwd
-
-      git_root(cwd)
+    def initialize(project_dir)
+      @project_dir = project_dir
     end
 
-    def self.current_branch(project_path)
-      return "no-git" unless project_path
-      branch = `git -C "#{project_path}" rev-parse --abbrev-ref HEAD 2>NUL`.strip
-      branch.empty? ? "no-git" : branch
-    end
+    def poll
+      branch = current_branch
+      return nil unless branch
 
-    def self.project_name(project_path)
-      return "unknown" unless project_path
-      File.basename(project_path)
+      { project: File.basename(@project_dir), branch: branch, dir: @project_dir }
     end
 
     private
 
-    def self.foreground_pid(hwnd)
-      pid_buf = Fiddle::Pointer.malloc(Fiddle::SIZEOF_LONG)
-      Win32.GetWindowThreadProcessId(hwnd, pid_buf)
-      pid_buf[0, Fiddle::SIZEOF_LONG].unpack1("L")
-    end
-
-    def self.process_cwd(pid)
-      EDITORS.each do |editor|
-        title = `powershell -NoProfile -Command "Get-Process '#{editor}' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty MainWindowTitle"`.strip
-        next if title.empty?
-
-        if editor == "Code"
-          parts = title.split(" - ").map(&:strip)
-          folder = parts[-2]
-          next if folder.nil? || folder.empty?
-
-          ["C:\\Users\\#{ENV['USERNAME']}\\Desktop\\Proyectos",
-          "C:\\Users\\#{ENV['USERNAME']}",
-          "C:\\"].each do |base|
-            candidate = File.join(base, folder)
-            return candidate if File.directory?(candidate)
-          end
-        end
+    def current_branch
+      if Gem.win_platform?
+        output = `git -C "#{@project_dir}" rev-parse --abbrev-ref HEAD 2>NUL`.strip
+      else
+        output = `git -C "#{@project_dir}" rev-parse --abbrev-ref HEAD 2>/dev/null`.strip
       end
-
-      raw = `powershell -NoProfile -Command "(Get-Process -Id #{pid} -ErrorAction SilentlyContinue).MainModule.FileName"`.strip
-      return nil if raw.empty?
-      File.dirname(raw)
-    end
-
-    def self.git_root(path)
-      return nil unless path && File.directory?(path)
-      root = `git -C "#{path}" rev-parse --show-toplevel 2>NUL`.strip
-      return nil if root.empty?
-      root.gsub("/", "\\")
+      output.empty? ? nil : output
     end
   end
 end
