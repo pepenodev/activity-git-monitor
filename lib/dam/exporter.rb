@@ -1,3 +1,4 @@
+require "json"
 require "date"
 
 module Dam
@@ -62,7 +63,7 @@ module Dam
         <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>DAM Report — #{Date.today}</title>
+          <title> Report — #{Date.today}</title>
           <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
           <style>
             *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
