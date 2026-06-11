@@ -4,6 +4,7 @@ gem "sqlite3"
 gem "thor"
 gem "tty-table"
 gem "tty-spinner"
+gem "pastel"
 gem "listen"
 gem "chronic"
 
