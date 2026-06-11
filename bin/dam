@@ -127,7 +127,10 @@ module Dam
     desc "today", "Show today's activity summary"
     def today
       since = Time.now.then { |t| Time.new(t.year, t.month, t.day) }
-      Reporter.new(since: since).print_summary(title: "Today — #{Time.now.strftime('%m/%d/%Y')}")
+      r = Reporter.new(since: since)
+      r.calculate_width
+      r.print_heatmap
+      r.print_summary(title: "Today — #{Time.now.strftime('%m/%d/%Y')}")
     end
 
     desc "report", "Show activity report for a time period"
@@ -139,9 +142,25 @@ module Dam
               else
                 Time.now - 7 * 86400
               end
-
       label = options[:month] ? "Last 30 days" : "Last 7 days"
-      Reporter.new(since: since).print_summary(title: label)
+      r = Reporter.new(since: since)
+      r.calculate_width
+      r.print_heatmap
+      r.print_summary(title: label)
+    end
+
+    desc "export", "Export activity report as HTML"
+    option :week,   type: :boolean, desc: "Last 7 days"
+    option :month,  type: :boolean, desc: "Last 30 days (default)"
+    option :output, type: :string,  desc: "Output path"
+    def export
+      since = if options[:week]
+                Time.now - 7 * 86400
+              else
+                Time.now - 30 * 86400
+              end
+      path = Exporter.new(since: since, output_path: options[:output]).export
+      puts "Report exported: #{path}"
     end
 
     desc "version", "Show version"
