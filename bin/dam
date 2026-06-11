@@ -5,7 +5,7 @@ require "thor"
 
 module Dam
   class CLI < Thor
-    desc "start", "Start the daemon in the background"
+    desc "start", "Start tracking the current directory"
     def start
       pidfile = File.expand_path("~/.dam/daemon.pid")
 
@@ -20,6 +20,14 @@ module Dam
         end
       end
 
+      project_dir = Dir.pwd
+
+      unless Dir.exist?(File.join(project_dir, ".git"))
+        puts "Error: no git repository found in current directory."
+        puts "Run dam start from the root of a git project."
+        return
+      end
+
       project_root = File.expand_path("..", __dir__)
       script       = File.join(project_root, "lib", "dam", "daemon_runner.rb")
       log_path     = File.expand_path("~/.dam/daemon.log")
@@ -29,17 +37,21 @@ module Dam
         log_out = File.expand_path("~/.dam/daemon.log")
         log_err = File.expand_path("~/.dam/daemon_err.log")
         ps_cmd = "Start-Process -FilePath '#{ruby_bin}' " \
-                "-ArgumentList '#{script}' " \
-                "-WorkingDirectory '#{project_root}' " \
-                "-RedirectStandardOutput '#{log_out}' " \
-                "-RedirectStandardError '#{log_err}' " \
-                "-WindowStyle Hidden"
+                 "-ArgumentList '#{script}', '#{project_dir}' " \
+                 "-WorkingDirectory '#{project_root}' " \
+                 "-RedirectStandardOutput '#{log_out}' " \
+                 "-RedirectStandardError '#{log_err}' " \
+                 "-WindowStyle Hidden"
         system("powershell -NoProfile -Command \"#{ps_cmd}\"")
+      else
+        spawn(ruby_bin, script, project_dir,
+              out: log_path, err: log_path, chdir: project_root)
       end
 
       sleep 3
       if File.exist?(pidfile)
         pid = File.read(pidfile).to_i
+        puts "Tracking: #{File.basename(project_dir)} (#{project_dir})"
         puts "Daemon started (PID: #{pid})"
         puts "Logs: #{log_path}"
       else
