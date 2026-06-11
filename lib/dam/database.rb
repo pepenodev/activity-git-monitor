@@ -1,4 +1,3 @@
-# lib/dam/database.rb
 require "sqlite3"
 require "singleton"
 require "fileutils"
@@ -38,7 +37,7 @@ module Dam
 
     def close_open_sessions!
       now = Time.now.to_i
-      @db.execute(<<~SQL, [now])
+      @db.execute(<<~SQL, [now, now])
         UPDATE sessions
         SET ended_at   = ?,
             duration_s = ? - started_at
@@ -78,6 +77,55 @@ module Dam
           AND duration_s > 0
         GROUP BY project, branch
         ORDER BY total_seconds DESC
+      SQL
+    end
+
+    def activity_by_day(since:)
+      @db.execute(<<~SQL, [since.to_i])
+        SELECT
+          DATE(started_at, 'unixepoch', 'localtime') AS day,
+          SUM(duration_s) AS total_seconds
+        FROM sessions
+        WHERE started_at >= ?
+          AND duration_s IS NOT NULL
+          AND duration_s > 0
+        GROUP BY day
+        ORDER BY day ASC
+      SQL
+    end
+
+    def sessions_detail(since:)
+      @db.execute(<<~SQL, [since.to_i])
+        SELECT
+          id,
+          project,
+          branch,
+          started_at,
+          ended_at,
+          duration_s,
+          DATE(started_at, 'unixepoch', 'localtime') AS day,
+          TIME(started_at, 'unixepoch', 'localtime') AS start_time,
+          TIME(ended_at,   'unixepoch', 'localtime') AS end_time
+        FROM sessions
+        WHERE started_at >= ?
+          AND duration_s IS NOT NULL
+          AND duration_s > 0
+        ORDER BY started_at DESC
+      SQL
+    end
+
+    def aggregate_by_project_and_day(since:)
+      @db.execute(<<~SQL, [since.to_i])
+        SELECT
+          project,
+          DATE(started_at, 'unixepoch', 'localtime') AS day,
+          SUM(duration_s) AS total_seconds
+        FROM sessions
+        WHERE started_at >= ?
+          AND duration_s IS NOT NULL
+          AND duration_s > 0
+        GROUP BY project, day
+        ORDER BY day ASC
       SQL
     end
   end
