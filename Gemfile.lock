@@ -79,6 +79,7 @@ PLATFORMS
 DEPENDENCIES
   chronic
   listen
+  pastel
   rspec
   rubocop
   sqlite3

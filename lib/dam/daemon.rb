@@ -6,7 +6,9 @@ module Dam
     IDLE_TIMEOUT  = 120
     STOP_FILE     = File.expand_path("~/.dam/stop")
 
-    def initialize
+    def initialize(project_dir)
+      @project_dir     = project_dir
+      @poller          = GitPoller.new(project_dir)
       @current_session = nil
       @last_activity   = Time.now
       @db              = Database.instance
@@ -14,6 +16,7 @@ module Dam
 
     def start
       Log.info("Daemon started (PID: #{Process.pid})")
+      Log.info("Tracking: #{@project_dir}")
       File.delete(STOP_FILE) if File.exist?(STOP_FILE)
       @db.close_open_sessions!
       write_pidfile
@@ -40,11 +43,11 @@ module Dam
     private
 
     def tick
-      project_path = GitPoller.active_project
+      result = @poller.poll
 
-      if project_path
-        project = GitPoller.project_name(project_path)
-        branch  = GitPoller.current_branch(project_path)
+      if result
+        project = result[:project]
+        branch  = result[:branch]
         now     = Time.now
 
         if @current_session.nil?
@@ -53,7 +56,7 @@ module Dam
         elsif session_changed?(project, branch)
           finalize_session
           @current_session = { project: project, branch: branch, started_at: now }
-          Log.info("Session changed: #{project} (#{branch})")
+          Log.info("Branch changed: #{project} (#{branch})")
         end
 
         @last_activity = now
